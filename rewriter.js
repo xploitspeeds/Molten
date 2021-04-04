@@ -57,7 +57,8 @@ module.exports = class {
 
         dom.window.document.querySelectorAll('*').forEach(node => {
             node.textContent = node.tagname == 'SCRIPT' ? this.js(node.textContent) :
-            node.tagname == 'STYLE' ? this.css(node.textContent) : node.textContent
+            node.tagname == 'STYLE' ? this.css(node.textContent) :
+            node.textContent;
                 
             node.getAttributeNames().forEach(attr => {
                 const value = node.getAttribute(attr);
@@ -75,12 +76,12 @@ module.exports = class {
             let elm = dom.window.document.createElement('SCRIPT');
 
             elm.textContent = fs.readFileSync('rewriter.js', 'utf8')
-            .replace(/INSERT_HTTP_PREFIX/g, this.httpPrefix)
-            .replace(/INSERT_WS_PREFIX/g, this.wsPrefix)
-            .replace(/INSERT_BASE_URL/g, this.baseUrl)
-            .replace(/INSERT_CLIENT_URL/g, this.clientUrl)
-            .replace(/INSERT_DOM/g, body)
-            .replace(/INSERT_ORIGINAL_COOKIE/g, this.originalCookie);
+                .replace(/INSERT_HTTP_PREFIX/g, this.httpPrefix)
+                .replace(/INSERT_WS_PREFIX/g, this.wsPrefix)
+                .replace(/INSERT_BASE_URL/g, this.baseUrl)
+                .replace(/INSERT_CLIENT_URL/g, this.clientUrl)
+                .replace(/INSERT_DOM/g, body)
+                .replace(/INSERT_ORIGINAL_COOKIE/g, this.originalCookie);
 
             dom.window.document.getElementsByTagName('HEAD')[0].appendChild(elm);
         }
