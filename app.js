@@ -14,8 +14,12 @@ module.exports = class {
     };
 
     http(req, resp) {
+        const baseProtocol = req.connection.encrypted ? 'https' : !req.connection.encrypted ? 'http' : null;
+
+        if (baseProtocol == null) resp.end(error.message);
+
         try {
-            this.baseUrl = (req.connection.encrypted ? 'https' : !req.connection.encrypted ? 'http' : null) + '://' + req.headers.host,
+            this.baseUrl = baseProtocol + '://' + req.headers.host,
             this.clientUrl = new URL(req.url.slice(this.httpPrefix.length));
         } catch (error) {
             return resp.end(error.message);
@@ -27,7 +31,7 @@ module.exports = class {
                 baseUrl: this.baseUrl, 
                 clientUrl: this.clientUrl,
             }), 
-            client = (this.clientUrl.protocol == 'https:' ? https : http).request(this.clientUrl.href, { 
+            client = (this.clientUrl.protocol == 'https' ? https : this.clientUrl.protocol == 'http' ? http : null).request(this.clientUrl.href, { 
                 headers: Object.entries(req.headers).map(([key, value]) => [key, rewriter.header(key, value)]),
                 method: req.method, 
                 followAllRedirects: false 
