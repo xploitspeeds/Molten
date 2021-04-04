@@ -27,7 +27,7 @@ module.exports = class {
                 baseUrl: this.baseUrl, 
                 clientUrl: this.clientUrl,
             }), 
-            client = (this.clientUrl.protocol == 'https:' ? https : this.clientUrl.protocol == 'http:' ? http : null).request(this.clientUrl.href, { 
+            client = (this.clientUrl.protocol == 'https:' ? https : http).request(this.clientUrl.href, { 
                 headers: Object.entries(req.headers).map(([key, value]) => [key, rewriter.header(key, value)]),
                 method: req.method, 
                 followAllRedirects: false 
@@ -73,7 +73,7 @@ module.exports = class {
     ws(server) {
         new WebSocket.Server({ server: server }).on('connection', (client, req) => {
             try {
-                this.clientUrl = new URL(req.url.slice(this.wsPrefix.length)); // might not be req.url
+                this.clientUrl = new URL(req.resource.slice(this.wsPrefix.length));
             } catch (err) {
                 req.terminate(err);
             }

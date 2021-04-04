@@ -23,7 +23,7 @@ module.exports = class {
         
             if (split.length == 2) split[1] = split[0] == 'domain' ? this.baseUrl.hostname :
             split[0] == 'path' ? this.httpPrefix + split[1] :
-                split[1];
+            split[1];
 
             return split.join('=') + 'original=' + split[1].replace(/=/g, '&equiv;');
         })
