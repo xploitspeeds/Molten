@@ -12,63 +12,81 @@ module.exports = class {
     };
 
     cookie = {
-        get: (expList) => expList.map(pair => {
-            const split = pair.split('=');
-        
-            if (split.length == 2 && split[0] == 'original') return this.originalCookie = split[1].replace(/&equiv;/, '=');
-        }),
+        get: (directives) => {
+            if (directives.length == 1) return directive;
+            else directives.map(pair => {
+                const split = pair.split('=');
 
-        set: (pairList) => pairList.map(pair => {
-            const split = pair.split('=');
-        
-            if (split.length == 2) split[1] = split[0] == 'domain' ? this.baseUrl.hostname :
-            split[0] == 'path' ? this.httpPrefix + split[1] :
-            split[1];
+                return this.originalCookie = split[1].replace(/&equiv;/, '=');
+            });
+        },
 
-            return split.join('=') + 'original=' + split[1].replace(/=/g, '&equiv;');
-        })
+        set: (directive) => {
+            if (directive.length == 1) return directive
+            else return directive.map(pair => {
+                const split = pair.split('=');
+            
+                if (split.length == 2) split[1] = split[0] == 'domain' ? this.baseUrl.hostname :
+                split[0] == 'path' ? this.httpPrefix + split[1] :
+                split[1];
+
+                return split.join('=') + 'original=' + split[1].replace(/=/g, '&equiv;');
+            });
+        }
     };
 
-    header(key, value) {
-        return key == 'host' ? this.clientUrl.host :
-        ['cookie', 'cookie2'].includes(key) ? cookie.get(value) :
-        key == 'content-security-policy' ? value.map(directive => {
-            // TODO: Add support
-            // For now the header will be deleted
-            // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy
-        }) :
-        key == 'location' ? this.httpPrefix + value :
-        key == 'referrer' ? value.slice(this.httpPrefix.length) :
-        ['set-cookie', 'set-cookie2'].includes(key) ? cookie.set(value) :
+    header([header, directives]) {
+        // TODO: Add CORS emulation
+
+        if (key == 'content-security-policy') this.csp = object.fromEntries(value);
+        else if (key == 'timing-allow-origin') this.tao = object.fromEntries(value);
+        else if (key == 'x-frame-options') {
+            directives.map(directive => {
+                const split = value.split(' ');
+
+                if (value == 'allow-from' && split.length == 2) {
+                    split[1] = this.url(split[1]);
+    
+                    return [key, split.join(' ')];
+                } else return [null, null];
+            })
+        }
+
+        return ['content-encoding', 'content-length', 'content-security-policy', 'timing-allow-origin', 'transfer-encoding', 'x-frame-options'].includes(key) ? [null, null] :
+        key == 'host' ? [key, this.clientUrl.host] :
+        ['cookie', 'cookie2'].includes(key) ? [key, cookie.get(value)] :
+        key == 'location' ? [key, this.httpPrefix + value] :
+        key == 'referrer' ? [key, value.slice(this.httpPrefix.length)] :
+        ['set-cookie', 'set-cookie2'].includes(key) ? [key, cookie.set(value)] :
         value;
     }
 
-    htmlUrl(url) {
+    url(url) {
         return url.startsWith('//') ? this.httpPrefix + url.slice(2) :
-        url.startsWith('/') ? this.httpPrefix + this.clientUrl.href + url :
-        ['http', 'https'].includes(url.split(':')[0]) ? url :
+        url.startsWith('/') ? this.httpPrefix + this.clientUrl.origin + url :
+        (['http', 'https'].includes(url.split(':')[0])) ? this.httpPrefix + url :
         this.httpPrefix + this.clientUrl.href + url;
     }
 
     html(body) {
         const jsdom = nodejs ? require('jsdom').JSDOM : null, 
             fs = nodejs ? require('fs') : null, 
-            dom = nodejs ? new jsdom(body, { contentType: 'text/html', resources: "usable" }) : new DOMParser.parseFromString(body, 'text/html');
+            dom = nodejs ? new jsdom(body, { contentType: 'text/html'}) : new DOMParser.parseFromString(body, 'text/html');
 
         dom.window.document.querySelectorAll('*').forEach(node => {
             node.textContent = node.tagname == 'SCRIPT' ? this.js(node.textContent) :
             node.tagname == 'STYLE' ? this.css(node.textContent) :
-            node.textContent;
-                
+            null;
+
             node.getAttributeNames().forEach(attr => {
                 const value = node.getAttribute(attr);
 
-                if (['action', 'content', 'data', 'href', 'poster', 'xlink:href'].includes(attr)) node.setAttribute(attr, this.htmlUrl(value));
+                if (['action', 'data', 'href', 'poster', 'src', 'xlink:href'].includes(attr)) node.setAttribute(attr, this.url(value));
                 else if (['integrity', 'nonce'].includes(attr)) node.removeAttribute(attr);
                 else if (attr == 'style') node.setAttribute(attr, this.css(value)); 
                 else if (attr.startsWith('on-')) node.setAttribute(this.js(value));
                 else if (attr == 'srcdoc') node.setAttribute(attr, this.html(value));
-                else if (attr == 'srcset') node.setAttribute(attr, value.split(', ').map((val, i) => i % 2 && this.htmlUrl(val)).join(', '));
+                else if (attr == 'srcset') node.setAttribute(attr, value.split(' ').map((value, i) => !(i % 2) ? this.url(value) : value).join(' '));
             })
         });
 
@@ -76,12 +94,13 @@ module.exports = class {
             let elm = dom.window.document.createElement('SCRIPT');
 
             elm.textContent = fs.readFileSync('rewriter.js', 'utf8')
-                .replace(/INSERT_HTTP_PREFIX/g, this.httpPrefix)
-                .replace(/INSERT_WS_PREFIX/g, this.wsPrefix)
-                .replace(/INSERT_BASE_URL/g, this.baseUrl)
-                .replace(/INSERT_CLIENT_URL/g, this.clientUrl)
-                .replace(/INSERT_DOM/g, body)
-                .replace(/INSERT_ORIGINAL_COOKIE/g, this.originalCookie);
+                .replace(/module\.exports/g, 'Rewriter')
+                .replace(/INSERT\_HTTP_PREFIX/g, this.httpPrefix)
+                .replace(/INSERT\_WS_PREFIX/g, this.wsPrefix)
+                .replace(/INSERT\_BASE_URL/g, this.baseUrl)
+                .replace(/INSERT\_CLIENT_URL/g, this.clientUrl.href)
+                .replace(/INSERT\_DOM/g, escape(body))
+                .replace(/INSERT\_ORIGINAL_COOKIE/g, escape(this.originalCookie));
 
             dom.window.document.getElementsByTagName('HEAD')[0].appendChild(elm);
         }
@@ -90,38 +109,38 @@ module.exports = class {
     }
 
     css(body) {
-        return body.replace(/(?<=url\((?<a>["']?)).*?(?=\k<a>\))|(?<=@import *(?<b>"|')).*?(?=\k<b>.*?;)/g, this.baseUrl + this.httpPrefix + body);
+        return body.replace(/(?<=url\((?<a>["']?)).*?(?=\k<a>\))|(?<=@import *(?<b>"|')).*?(?=\k<b>.*?;)/g, body=>this.baseUrl + this.httpPrefix + body);
     }
 
     js(body) {
-        'let document=proxifiedDocument;' + body;
+        return '{document=proxifiedDocument;' + body + '}';
     }
 };
 
-if (!nodejs) {
-    const passthrough = {
-            httpPrefix: 'INSERT_HTTP_PREFIX',
-            wsPrefix: 'INSERT_WS_PREFIX',
-            baseUrl: INSERT_BASE_URL,
-            clientUrl: INSERT_PROXY_URL,
-            original: {
-                dom: 'INSERT_DOM',
-                cookie: 'INSERT_ORIGINAL_COOKIE'
-            }
-        },
-        rewriter = new rewriter({
-            httpPrefix: passthrough.httpPrefix,
-            wsPrefix: passthrough.wsPrefix,
-            baseUrl: passthrough.baseUrl,
-            clientUrl: passthrough.clientUrl
-        }),
-
-    proxifiedDocument = new Proxy(document, {
-        set: (target, prop) => ['location', 'referrer', 'URL'].includes(prop) ? rewriter.url(target) :
-            prop == 'cookie' ? rewriter.cookie.set(target) : 
-            target
+const passthrough = nodejs ? null : {
+        httpPrefix: 'INSERT_HTTP_PREFIX',
+        wsPrefix: 'INSERT_WS_PREFIX',
+        baseUrl: 'INSERT_BASE_URL',
+        clientUrl: new URL('INSERT_CLIENT_URL'),
+        original: {
+            dom: unescape('INSERT_DOM'),
+            cookie: unescape('INSERT_ORIGINAL_COOKIE')
+        }
+    },
+    rewriter = nodejs ? null : new Rewriter({
+        httpPrefix: passthrough.httpPrefix,
+        wsPrefix: passthrough.wsPrefix,
+        baseUrl: passthrough.baseUrl,
+        clientUrl: passthrough.clientUrl
     });
+        
+var proxifiedDocument = nodejs ? new Proxy(document, {
+    set: (target, prop) => ['location', 'referrer', 'URL'].includes(prop) ? rewriter.url(target) :
+    prop == 'cookie' ? rewriter.cookie.set(target) : 
+    target
+}) : null;
 
+if (nodejs) {
     document.write = new Proxy(document.write, {
         apply(target, thisArg, args) {
             args[0] = rewriter.html(args[0]);
@@ -159,7 +178,7 @@ if (!nodejs) {
 
     window.open = new Proxy(window.open, {
         apply(target, thisArg, args) {
-            args[0] = rewriter.url(args[0]);
+            args[0] = passthrough.httpPrefix + args[0];
 
             return Reflect.apply(target, thisArg, args);
         }

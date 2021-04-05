@@ -16,8 +16,6 @@ module.exports = class {
     http(req, resp) {
         const baseProtocol = req.connection.encrypted ? 'https' : !req.connection.encrypted ? 'http' : null;
 
-        if (baseProtocol == null) resp.end(error.message);
-
         try {
             this.baseUrl = baseProtocol + '://' + req.headers.host,
             this.clientUrl = new URL(req.url.slice(this.httpPrefix.length));
@@ -31,7 +29,7 @@ module.exports = class {
                 baseUrl: this.baseUrl, 
                 clientUrl: this.clientUrl,
             }), 
-            client = (this.clientUrl.protocol == 'https' ? https : this.clientUrl.protocol == 'http' ? http : null).request(this.clientUrl.href, { 
+            client = (this.clientUrl.protocol == 'https:' ? https : this.clientUrl.protocol == 'http:' ? http : null).request(this.clientUrl.href, { 
                 headers: Object.entries(req.headers).map(([key, value]) => [key, rewriter.header(key, value)]),
                 method: req.method, 
                 followAllRedirects: false 
@@ -39,32 +37,39 @@ module.exports = class {
             (clientResp, streamData = [], sendData = '') => clientResp
                 .on('data', data => streamData.push(data))
                 .on('end', () => {
+                    // TODO: Emulate referrer policy header
+                    // TODO: Fix images
+
                     const enc = clientResp.headers['content-encoding'];
 
-                    if (typeof enc != 'undefined') {
-                        enc.split('; ')[0].split(', ').forEach(encType => {
+                    try {
+                        if (typeof enc != 'undefined') enc.split('; ')[0].split(', ').forEach(encType => {
                             sendData = encType == 'gzip' ? zlib.gunzipSync(Buffer.concat(streamData)).toString() :
                             encType == 'deflate' ? zlib.inflateSync(Buffer.concat(streamData)).toString() :
                             encType == 'br' ? zlib.brotliDecompressSync(Buffer.concat(streamData)).toString() : 
-                            Buffer.concat(streamData).toString();
-                        })
-                    } else {
-                        sendData = Buffer.concat(streamData).toString();
+                            null;
+                        });
+                        else sendData = Buffer.concat(streamData).toString();
+                    } catch (error) {
+                        resp.writeHead(500, { 'content-type': 'text/plain' })
+                            .end(error.message);
                     }
 
                     const type = clientResp.headers['content-type'];
 
                     if (typeof type != 'undefined') {
                         const directive = type.split('; ')[0];
-                                
+                    
                         sendData = directive == 'text/html' ? rewriter.html(sendData) :
                         directive == 'text/css' ? rewriter.css(sendData) :
                         ['text/javascript', 'application/x-javascript', 'application/javascript'].includes(directive) ? rewriter.js(sendData) :
                         sendData;
                     }
 
-                    resp.writeHead(clientResp.statusCode, Object.entries(clientResp.headers).map(([key, value]) => ['content-encoding', 'content-length', 'content-security-policy', 'timing-allow-origin', 'transfer-encoding', 'referrer-policy', 'access-control-allow-origin'].includes(key) || key.startsWith('x-') ? null : [key, rewriter.header(key, value)]).filter(map => map))
-                    .end(sendData);
+                    resp
+                        .writeHead(clientResp.statusCode, Object.entries(clientResp.headers).map(([key, value]) => [key, rewriter.header(key, value)])
+                        .filter(map => map))
+                        .end(sendData);
                 }));
                 
         client.on('error', error => resp.end(error.message));
@@ -74,6 +79,9 @@ module.exports = class {
             .on('end', () => client.end());
     };
 
+    // Instead of having a seperate handler inside of the http handler check if the forwarded header is valid and send a request inside of the function
+    // Remove this
+    // And also ws prefix wouldn't be needed anymore
     ws(server) {
         new WebSocket.Server({ server: server }).on('connection', (client, req) => {
             try {
