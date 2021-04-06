@@ -30,7 +30,7 @@ module.exports = class {
                 clientUrl: this.clientUrl,
             }), 
             client = (this.clientUrl.protocol == 'https:' ? https : this.clientUrl.protocol == 'http:' ? http : null).request(this.clientUrl.href, { 
-                headers: Object.entries(req.headers).map(([key, value]) => [key, rewriter.header(key, value)]),
+                headers: Object.entries(req.headers).map(([header, directives]) => rewriter.header([header, directives])).filter(map => map),
                 method: req.method, 
                 followAllRedirects: false 
             }, 
@@ -58,7 +58,7 @@ module.exports = class {
                     const type = clientResp.headers['content-type'];
 
                     if (typeof type != 'undefined') {
-                        const directive = type.split('; ')[0];
+                        const directive = type.split(';')[0];
                     
                         sendData = directive == 'text/html' ? rewriter.html(sendData) :
                         directive == 'text/css' ? rewriter.css(sendData) :
@@ -67,8 +67,7 @@ module.exports = class {
                     }
 
                     resp
-                        .writeHead(clientResp.statusCode, Object.entries(clientResp.headers).map(([key, value]) => [key, rewriter.header(key, value)])
-                        .filter(map => map))
+                        .writeHead(clientResp.statusCode, Object.entries(clientResp.headers).map(([header, directives]) => rewriter.header([header, directives])).filter(map => map))
                         .end(sendData);
                 }));
                 

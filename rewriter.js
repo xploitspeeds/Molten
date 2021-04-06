@@ -12,53 +12,54 @@ module.exports = class {
     };
 
     cookie = {
-        get: (directives) => {
-            if (directives.length == 1) return directive;
-            else directives.map(pair => {
-                const split = pair.split('=');
+        get: directives => {
+            directives
+                .split('; ')
+                .forEach(pair => {
+                    const split = pair.split('=');
 
-                return this.originalCookie = split[1].replace(/&equiv;/, '=');
-            });
+                    if (split[0] == 'original') this.originalCookie = split[1].replace(/&equiv;/, '=');
+                });
+            return this.originalCookie;
         },
 
-        set: (directive) => {
-            if (directive.length == 1) return directive
-            else return directive.map(pair => {
+        set: directives => directives
+            .split('; ')
+            .map(pair => {
                 const split = pair.split('=');
-            
+                
                 if (split.length == 2) split[1] = split[0] == 'domain' ? this.baseUrl.hostname :
                 split[0] == 'path' ? this.httpPrefix + split[1] :
                 split[1];
 
-                return split.join('=') + 'original=' + split[1].replace(/=/g, '&equiv;');
-            });
-        }
-    };
+                directives.add('original=' + split[1].replace(/=/g, '&equiv;'));
+            })
+            .join('; '),
+    }; 
 
     header([header, directives]) {
-        // TODO: Add CORS emulation
-
-        if (key == 'content-security-policy') this.csp = object.fromEntries(value);
-        else if (key == 'timing-allow-origin') this.tao = object.fromEntries(value);
-        else if (key == 'x-frame-options') {
-            directives.map(directive => {
-                const split = value.split(' ');
-
-                if (value == 'allow-from' && split.length == 2) {
+        if (header == 'content-security-policy') this.csp = Object.fromEntries(new map(directives.split(';')));
+        else if (header == 'timing-allow-origin') this.tao = Object.fromEntries(new map(directives.split(';')));
+        else if (header == 'x-frame-options') directives
+            .split('; ')
+            .map(directive => {
+                const split = directive.split(' ');
+                if (split[0] == 'allow-from') {
                     split[1] = this.url(split[1]);
-    
-                    return [key, split.join(' ')];
-                } else return [null, null];
+            
+                    return [header, split.join(' ')];
+                } else return null;
             })
-        }
+            .filter(map => map)
+            .join('; ');
 
-        return ['content-encoding', 'content-length', 'content-security-policy', 'timing-allow-origin', 'transfer-encoding', 'x-frame-options'].includes(key) ? [null, null] :
-        key == 'host' ? [key, this.clientUrl.host] :
-        ['cookie', 'cookie2'].includes(key) ? [key, cookie.get(value)] :
-        key == 'location' ? [key, this.httpPrefix + value] :
-        key == 'referrer' ? [key, value.slice(this.httpPrefix.length)] :
-        ['set-cookie', 'set-cookie2'].includes(key) ? [key, cookie.set(value)] :
-        value;
+        return ['content-encoding', 'content-length', 'content-security-policy', 'timing-allow-origin', 'transfer-encoding', 'x-frame-options'].includes(header) ? null :
+        header == 'host' ? [header, this.clientUrl.host] :
+        ['cookie', 'cookie2'].includes(header) ? [header, cookie.get(directives)] :
+        header == 'location' ? [header, this.httpPrefix + directives] :
+        header == 'referrer' ? [header, directives.slice(this.httpPrefix.length)] :
+        ['set-cookie', 'set-cookie2'].includes(header) ? [header, cookie.set(directives)] :
+        [header, directives];
     }
 
     url(url) {
@@ -74,9 +75,8 @@ module.exports = class {
             dom = nodejs ? new jsdom(body, { contentType: 'text/html'}) : new DOMParser.parseFromString(body, 'text/html');
 
         dom.window.document.querySelectorAll('*').forEach(node => {
-            node.textContent = node.tagname == 'SCRIPT' ? this.js(node.textContent) :
-            node.tagname == 'STYLE' ? this.css(node.textContent) :
-            null;
+            if (node.tagName == 'SCRIPT') node.textContent = this.js(node.textContent);
+            else if (node.tagName == 'STYLE') node.textContent = this.css(node.textContent);
 
             node.getAttributeNames().forEach(attr => {
                 const value = node.getAttribute(attr);
@@ -86,8 +86,8 @@ module.exports = class {
                 else if (attr == 'style') node.setAttribute(attr, this.css(value)); 
                 else if (attr.startsWith('on-')) node.setAttribute(this.js(value));
                 else if (attr == 'srcdoc') node.setAttribute(attr, this.html(value));
-                else if (attr == 'srcset') node.setAttribute(attr, value.split(' ').map((value, i) => !(i % 2) ? this.url(value) : value).join(' '));
-            })
+                else if (attr == 'srcset') node.setAttribute(attr, value.split(' ').map((value, i) => !(i % 2) ? this.url(value): value).join(' '));
+            });
         });
 
         if (nodejs) {
@@ -101,6 +101,7 @@ module.exports = class {
                 .replace(/INSERT\_CLIENT_URL/g, this.clientUrl.href)
                 .replace(/INSERT\_DOM/g, escape(body))
                 .replace(/INSERT\_ORIGINAL_COOKIE/g, escape(this.originalCookie));
+                // TODO: Share CORS policies
 
             dom.window.document.getElementsByTagName('HEAD')[0].appendChild(elm);
         }
@@ -113,34 +114,34 @@ module.exports = class {
     }
 
     js(body) {
-        return '{document=proxifiedDocument;' + body + '}';
+        return '{document=window.proxifiedDocument;' + body + '}';
     }
 };
 
-const passthrough = nodejs ? null : {
-        httpPrefix: 'INSERT_HTTP_PREFIX',
-        wsPrefix: 'INSERT_WS_PREFIX',
-        baseUrl: 'INSERT_BASE_URL',
-        clientUrl: new URL('INSERT_CLIENT_URL'),
-        original: {
-            dom: unescape('INSERT_DOM'),
-            cookie: unescape('INSERT_ORIGINAL_COOKIE')
-        }
-    },
-    rewriter = nodejs ? null : new Rewriter({
-        httpPrefix: passthrough.httpPrefix,
-        wsPrefix: passthrough.wsPrefix,
-        baseUrl: passthrough.baseUrl,
-        clientUrl: passthrough.clientUrl
-    });
-        
-var proxifiedDocument = nodejs ? new Proxy(document, {
-    set: (target, prop) => ['location', 'referrer', 'URL'].includes(prop) ? rewriter.url(target) :
-    prop == 'cookie' ? rewriter.cookie.set(target) : 
-    target
-}) : null;
+if (!nodejs) {
+    const passthrough = {
+            httpPrefix: 'INSERT_HTTP_PREFIX',
+            wsPrefix: 'INSERT_WS_PREFIX',
+            baseUrl: 'INSERT_BASE_URL',
+            clientUrl: new URL('INSERT_CLIENT_URL'),
+            original: {
+                dom: unescape('INSERT_DOM'),
+                cookie: unescape('INSERT_ORIGINAL_COOKIE')
+            }
+        },
+        rewriter = new Rewriter({
+            httpPrefix: passthrough.httpPrefix,
+            wsPrefix: passthrough.wsPrefix,
+            baseUrl: passthrough.baseUrl,
+            clientUrl: passthrough.clientUrl
+        });
 
-if (nodejs) {
+    window.proxifiedDocument = new Proxy(document, {
+        set: (target, prop) => ['location', 'referrer', 'URL'].includes(prop) ? rewriter.url(target) :
+        prop == 'cookie' ? rewriter.cookie.set(target) : 
+        target
+    });
+
     document.write = new Proxy(document.write, {
         apply(target, thisArg, args) {
             args[0] = rewriter.html(args[0]);
