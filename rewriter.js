@@ -2,7 +2,7 @@ const nodejs = typeof exports !== 'undefined' && this.exports !== exports;
 
 nodejs && (
     url = require('url'),
-    util = require('url') 
+    util = require('util') 
 );
 
 module.exports = class {
@@ -13,31 +13,32 @@ module.exports = class {
     };
 
     cookie = {
-        // TODO: Return original cookie value unescaped
         get: directives => null,
 
         set: directives => 
             directives
                 .join``
                 .split`; `
-                .map(directive => (
+                .map(directive =>
                     pair = directive.split`=`,
                     pair.length == 2
                         ? pair[1] = pair[0] == 'domain' ? this.baseUrl.hostname :
                         pair[0] == 'path' ? this.prefix + pair[1] :
                         pair[1]
                         : pair.join`=` + pair[1].replace(/=/g, '&equiv;')
-                ))
+                )
                 .join``
     };
 
-    header = ([header, directives]) => (
-        this.csp = header == 'content-security-policy' 
-            ? null
-            : null,
-        this.tao = header == 'timing-allow-origin' 
-            ? null 
-            : null,
+    header = ([header, directives]) => 
+        this.csp = 
+            header == 'content-security-policy' 
+                ? null
+                : null,
+        this.tao = 
+            header == 'timing-allow-origin' 
+                ? null 
+                : null,
         ['content-encoding', 'content-length', 'content-security-policy', 'timing-allow-origin', 'transfer-encoding', 'referrer-policy', 'x-frame-options'].includes(header) 
             ? null
         : header == 'host' 
@@ -50,13 +51,10 @@ module.exports = class {
             ? [header, directives.slice(this.prefix.length)] 
         : ['set-cookie', 'set-cookie2'].includes(header)
             ? [header, this.cookie.set(directives)] 
-        : [header, directives]
-    );
+        : [header, directives];
 
-    // TODO: Rewrite URLS
     url = url => null;
 
-    // TODO: Emulate security policies
     attr = ([attr, src]) => 
         ['action', 'data', 'href', 'poster', 'src', 'xlink:href'].includes(attr) 
             ? [attr, this.url(src)]
@@ -64,8 +62,7 @@ module.exports = class {
             ? null
         : attr.startsWith`on-` 
             ? this.js(src) 
-        :
-        attr == 'style' 
+        : attr == 'style' 
             ? [attr, this.css(src)]
         : attr == 'srcdoc' 
             ? [attr, this.html(src)]
@@ -77,13 +74,16 @@ module.exports = class {
         nodejs 
             ? (
                 parse5 = require('parse5'),
-                dom = parse5.parse(body),
-                dom.childNodes.forEach(node => rewriter.attr([node.name, node.value])),
-                parse5.serialize(dom)
+                ast = parse5.parse(body),
+                ast.walk(ast => 
+                    ast.tagName == 'script' || ast.tagName == 'style' && (ast.childNodes[0].value = this[ast.tagName](ast.childNodes[0].value)),
+                    ast.attrs.forEach(attr => rewrite.attr([attr.name, attr.value]))
+                ),
+                parse5.serialize(ast)
             )
             : (
-                dom = new DOMParser.parseFromString(body, 'text/html'),
-                dom.querySelectorAll`*`.forEach(elm => (
+                ast = new DOMParser.parseFromString(body, 'text/html'),
+                ast.querySelectorAll`*`.forEach(elm =>
                     elm.textContent = 
                         elm.tagName == 'SCRIPT' 
                             ? this.js(elm.textContent) 
@@ -91,8 +91,8 @@ module.exports = class {
                             ? this.css(elm.textContent)
                         : elm.textContent,
                     elm.getAttributeNames().forEach(name => elm.setAttribute(...this.attr([name, elm.getAttribute(name)])))
-                )),
-                dom.querySelector`*`.outerHTML
+                ),
+                ast.querySelector`*`.outerHTML
             );
 
     css = body => 
@@ -105,6 +105,9 @@ module.exports = class {
             )
             : (
                 dom = new DOMParser.parseFromString(`<style>${body}</style>`, 'text/html'),
+                Object
+                    .entries(dom.styleSheets)
+                    .map(([i, ast]) => ast.cssRules.map(rule => rule.type == 'Url' && this.url(rule.cssText))),
                 dom.getElementsByTagName`style`.innerHTML
             )
 

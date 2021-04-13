@@ -14,9 +14,16 @@ module.exports = class {
     };
 
     http(req, resp) {
+        const reqProto = 
+            req.connection.encrypted
+                ? 'https'
+            : !req.connection.encrypted 
+                ? 'http'
+            : null;
+
         try {
-            this.baseUrl = new URL((req.connection.encrypted ? 'https' : !req.connection.encrypted ? 'http' : null) + '://' + req.headers.host),
-            this.clientUrl = new URL(req.url.slice(this.prefix.length));
+            this.baseUrl = `${reqProto}://${req.headers.host}`,
+            this.clientUrl = req.url.slice(this.prefix.length);
         } catch (err) {
             typeof err == TypeError && 
                 req
@@ -29,10 +36,14 @@ module.exports = class {
                 baseUrl: this.baseUrl, 
                 clientUrl: this.clientUrl
             }), 
-            client = https.request(
-                this.clientUrl.href, 
+            client = global[reqProto].request(
+                this.clientUrl, 
                 { 
-                    headers: Object.entries(req.headers).map(([header, directives]) => rewriter.header([header, directives])).filter(map => map),
+                    headers: 
+                        Object
+                            .entries(req.headers)
+                            .map(([header, directives]) => rewriter.header([header, directives]))
+                            .filter(map => map),
                     method: req.method,
                     followAllRedirects: false 
                 }, 
@@ -44,17 +55,18 @@ module.exports = class {
                                 type = clientResp.headers['content-type'];
 
                             typeof enc != 'undefined' 
-                                ? enc.split`; `[0].split`, `.forEach(encType => sendData = 
-                                    encType == 'gzip'
-                                        ? zlib.gunzipSync(Buffer.concat(streamData))
-                                            .toString() 
-                                    : encType == 'deflate'
-                                        ? zlib.inflateSync(Buffer.concat(streamData))
-                                            .toString()
-                                    : encType == 'br' 
-                                        ? zlib.brotliDecompressSync(Buffer.concat(streamData))
-                                            .toString()
-                                    : null 
+                                ? enc.split`; `[0].split`, `.forEach(encType => 
+                                    sendData = 
+                                        encType == 'gzip'
+                                            ? zlib.gunzipSync(Buffer.concat(streamData))
+                                                .toString() 
+                                        : encType == 'deflate'
+                                            ? zlib.inflateSync(Buffer.concat(streamData))
+                                                .toString()
+                                        : encType == 'br' 
+                                            ? zlib.brotliDecompressSync(Buffer.concat(streamData))
+                                                .toString()
+                                        : null 
                                 )
                                 : sendData = Buffer.concat(streamData).toString();
 
@@ -71,7 +83,13 @@ module.exports = class {
                             );
 
                             resp
-                                .writeHead(clientResp.statusCode, Object.entries(clientResp.headers).map(([header, directives]) => rewriter.header([header, directives])).filter(map => map))
+                                .writeHead (
+                                    clientResp.statusCode, 
+                                    Object
+                                        .entries(clientResp.headers)
+                                        .map(([header, directives]) => rewriter.header([header, directives]))
+                                        .filter(map => map)
+                                )
                                 .end(sendData);
                         })
             );
@@ -86,17 +104,23 @@ module.exports = class {
     ws(server) {
         new WebSocket.Server({ server: server }).on('connection', (client, req, msgParts = []) => {
             try {
-                this.clientUrl = new URL(req.url.slice(this.prefix.length));
+                this.clientUrl = req.url.slice(this.prefix.length);
             } catch (err) {
                 return client.end();
             }
 
-            const sendReq = new WebSocket(clientUrl.href, { headers: req.headers }).on('message', msg => client.send(msg))
+            const sendReq = new WebSocket(this.clientUrl, { headers: req.headers })
+                .on('message', msg => client.send(msg))
                 .on('open', () => sendReq.send(msgParts))
                 .on('error', () => client.end())
                 .on('close', () => client.close());
 
-            client.on('message', msg => sendReq.readyState == WebSocket.open ? sendReq.send(msg) : msgParts.push(msg))
+            client
+                .on('message', msg => 
+                    sendReq.readyState == WebSocket.open 
+                        ? sendReq.send(msg)
+                        : msgParts.push(msg)
+                )
                 .on('error', () => sendReq.end())
                 .on('close', () => sendReq.close());
         });
