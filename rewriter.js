@@ -25,6 +25,7 @@ module.exports = class {
                         ? pair[1] = pair[0] == 'domain' ? this.baseUrl.hostname :
                         pair[0] == 'path' ? this.prefix + pair[1] :
                         pair[1]
+                        // TODO: Instead use array mainipulation
                         : pair.join`=` + pair[1].replace(/=/g, '&equiv;')
                 )
                 .join``
