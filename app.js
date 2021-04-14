@@ -14,15 +14,15 @@ module.exports = class {
     };
 
     http(req, resp) {
-        const reqProto = 
-            req.connection.encrypted
-                ? 'https'
-            : !req.connection.encrypted 
-                ? 'http'
-            : null;
-
         try {
-            this.baseUrl = `${reqProto}://${req.headers.host}`,
+            this.baseUrl = 
+                `${this.reqProto = 
+                    req.connection.encrypted
+                        ? 'https'
+                    : !req.connection.encrypted 
+                        ? 'http'
+                    : null
+                }://${req.headers.host}`;
             this.clientUrl = req.url.slice(this.prefix.length);
         } catch (err) {
             typeof err == TypeError && 
@@ -36,7 +36,7 @@ module.exports = class {
                 baseUrl: this.baseUrl, 
                 clientUrl: this.clientUrl
             }), 
-            client = global[reqProto].request(
+            client = global[this.reqProto].request(
                 this.clientUrl, 
                 { 
                     headers: 
@@ -50,26 +50,10 @@ module.exports = class {
                 (clientResp, streamData = [], sendData = '') => 
                     clientResp
                         .on('data', data => streamData.push(data))
-                        .on('end', () => {
-                            const enc = clientResp.headers['content-encoding'],
-                                type = clientResp.headers['content-type'];
-
-                            typeof enc != 'undefined' 
-                                ? enc.split`; `[0].split`, `.forEach(encType => 
-                                    sendData = 
-                                        encType == 'gzip'
-                                            ? zlib.gunzipSync(Buffer.concat(streamData))
-                                                .toString() 
-                                        : encType == 'deflate'
-                                            ? zlib.inflateSync(Buffer.concat(streamData))
-                                                .toString()
-                                        : encType == 'br' 
-                                            ? zlib.brotliDecompressSync(Buffer.concat(streamData))
-                                                .toString()
-                                        : null 
-                                )
-                                : sendData = Buffer.concat(streamData).toString();
-
+                        .on('end', () => (
+                            enc = clientResp.headers['content-encoding'],
+                            type = clientResp.headers['content-type'],
+                            (zlib[['gunzipSync','inflateSync','brotliDecompressSync'][encType]](Buffer.concat(streamData)).toString(),
                             typeof type != 'undefined' && (
                                 directive = type.split`;`[0],
                                 sendData = 
@@ -80,8 +64,7 @@ module.exports = class {
                                     : ['text/javascript', 'application/x-javascript', 'application/javascript'].includes(directive)
                                         ? rewriter.js(sendData)
                                     : sendData
-                            );
-
+                            ),
                             resp
                                 .writeHead (
                                     clientResp.statusCode, 
@@ -90,9 +73,8 @@ module.exports = class {
                                         .map(([header, directives]) => rewriter.header([header, directives]))
                                         .filter(map => map)
                                 )
-                                .end(sendData);
-                        })
-            );
+                                .end(sendData)
+                        ));
                 
         client.on('error', err => resp.end(err.message));
         

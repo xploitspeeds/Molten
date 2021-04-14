@@ -31,7 +31,7 @@ module.exports = class {
                 .join``
     };
 
-    header = ([header, directives]) => 
+    header = ([header, directives]) => (
         this.csp = 
             header == 'content-security-policy' 
                 ? null
@@ -52,7 +52,8 @@ module.exports = class {
             ? [header, directives.slice(this.prefix.length)] 
         : ['set-cookie', 'set-cookie2'].includes(header)
             ? [header, this.cookie.set(directives)] 
-        : [header, directives];
+        : [header, directives]
+    );
 
     url = url => null;
 
