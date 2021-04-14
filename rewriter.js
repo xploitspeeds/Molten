@@ -1,4 +1,4 @@
-const nodejs = typeof exports !== 'undefined' && this.exports !== exports;
+nodejs = typeof exports !== 'undefined' && this.exports !== exports;
 
 nodejs && (
     url = require('url'),

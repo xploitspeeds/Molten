@@ -53,7 +53,7 @@ module.exports = class {
                         .on('end', () => (
                             enc = clientResp.headers['content-encoding'],
                             type = clientResp.headers['content-type'],
-                            (zlib[['gunzipSync','inflateSync','brotliDecompressSync'][encType]](Buffer.concat(streamData)).toString(),
+                            (zlib[['gunzipSync','inflateSync','brotliDecompressSync'][['gzip', 'deflate', 'br'].indexOf(enc)]](Buffer.concat(streamData)).toString(),
                             typeof type != 'undefined' && (
                                 directive = type.split`;`[0],
                                 sendData = 
