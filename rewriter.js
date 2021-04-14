@@ -55,6 +55,11 @@ module.exports = class {
         : [header, directives]
     );
 
+    manifest = body => (
+        ast = JSON.parse(body),
+        JSON.stringify(ast, (key, value) => ['key', 'src', 'start_url'].includes(key) ? null : value)
+    );
+
     url = url => null;
 
     attr = ([attr, src]) => 
@@ -86,6 +91,7 @@ module.exports = class {
             : (
                 ast = new DOMParser.parseFromString(body, 'text/html'),
                 ast.querySelectorAll`*`.forEach(elm =>
+                    // TODO: Minify
                     elm.textContent = 
                         elm.tagName == 'SCRIPT' 
                             ? this.js(elm.textContent) 
@@ -111,7 +117,7 @@ module.exports = class {
                     .entries(dom.styleSheets)
                     .map(([i, ast]) => ast.cssRules.map(rule => rule.type == 'Url' && this.url(rule.cssText))),
                 dom.getElementsByTagName`style`.innerHTML
-            )
+            );
 
     js = body => `{document=proxifiedDocument;${body}`;
 };

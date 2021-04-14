@@ -56,6 +56,7 @@ module.exports = class {
                             (zlib[['gunzipSync','inflateSync','brotliDecompressSync'][['gzip', 'deflate', 'br'].indexOf(enc)]](Buffer.concat(streamData)).toString(),
                             typeof type != 'undefined' && (
                                 directive = type.split`;`[0],
+                                // TODO: Minify
                                 sendData = 
                                     directive == 'text/html'
                                         ? rewriter.html(sendData)
@@ -63,6 +64,8 @@ module.exports = class {
                                         ? rewriter.css(sendData)
                                     : ['text/javascript', 'application/x-javascript', 'application/javascript'].includes(directive)
                                         ? rewriter.js(sendData)
+                                    : ['text/json', 'application/json'] && req.url == `${this.prefix + this.clientUrl}manifest.json`.includes(directive)
+                                        ? this.manifest(sendData)
                                     : sendData
                             ),
                             resp
