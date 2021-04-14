@@ -43,7 +43,7 @@ module.exports = class {
         ['content-encoding', 'content-length', 'content-security-policy', 'timing-allow-origin', 'transfer-encoding', 'referrer-policy', 'x-frame-options'].includes(header) 
             ? null
         : header == 'host' 
-            ? [header, this.clientUrl.host] 
+            ? [header, null] 
         : ['cookie', 'cookie2'].includes(header)
             ? [header, this.cookie.get(directives)]
         : header == 'location' 
