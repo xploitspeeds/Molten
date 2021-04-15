@@ -1,15 +1,10 @@
-nodejs = typeof exports !== 'undefined' && this.exports !== exports;
+const nodejs = typeof exports !== 'undefined' && this.exports !== exports;
 
-nodejs && (
-    url = require('url'),
-    util = require('util') 
-);
-
+// TODO: Make rewriter class asynchronous 
 module.exports = class {
     constructor(passthrough = {}) {
-        this.prefix = passthrough.prefix,
-        this.baseUrl = passthrough.baseUrl,
-        this.clientUrl = passthrough.clientUrl; 
+        // Not done
+        this['baseUrl', 'clientUrl', 'prefix'];
     };
 
     cookie = {
@@ -22,11 +17,13 @@ module.exports = class {
                 .map(directive =>
                     pair = directive.split`=`,
                     pair.length == 2
-                        ? pair[1] = pair[0] == 'domain' ? this.baseUrl.hostname :
-                        pair[0] == 'path' ? this.prefix + pair[1] :
-                        pair[1]
-                        // TODO: Instead use array mainipulation
-                        : pair.join`=` + pair[1].replace(/=/g, '&equiv;')
+                        ? pair[1] = 
+                            pair[0] == 'domain' 
+                                ? this.baseUrl.hostname 
+                            : pair[0] == 'path'
+                                ? this.prefix + pair[1]
+                            : pair[1]
+                        : pair.join`=` + pair[1].split``.join`&equiv;`
                 )
                 .join``
     };
@@ -39,7 +36,8 @@ module.exports = class {
         this.tao = 
             header == 'timing-allow-origin' 
                 ? null 
-                : null,
+            : null,
+            
         ['content-encoding', 'content-length', 'content-security-policy', 'timing-allow-origin', 'transfer-encoding', 'referrer-policy', 'x-frame-options'].includes(header) 
             ? null
         : header == 'host' 
@@ -57,14 +55,18 @@ module.exports = class {
 
     manifest = body => (
         ast = JSON.parse(body),
-        JSON.stringify(ast, (key, value) => ['key', 'src', 'start_url'].includes(key) ? null : value)
+        JSON.stringify(ast, (key, value) => 
+            ['key', 'src', 'start_url'].includes(key)
+                ? null 
+            : value
+        )
     );
 
     url = url => null;
 
     attr = ([attr, src]) => 
         ['action', 'data', 'href', 'poster', 'src', 'xlink:href'].includes(attr) 
-            ? [attr, this.url(src)]
+            ? [attr, null]
         : ['integrity', 'nonce'].includes(attr) 
             ? null
         : attr.startsWith`on-` 
@@ -74,32 +76,51 @@ module.exports = class {
         : attr == 'srcdoc' 
             ? [attr, this.html(src)]
         : attr == 'srcset' 
-            ? [attr, src.split` `.map((src, i) => !(i % 2) ? this.url(src) : src).join` `] 
+            ? [attr, src.split` `.map((src, i) => !(i % 2) ? null : src).join` `] 
         : [attr, value];
 
     html = body => 
         nodejs 
             ? (
                 parse5 = require('parse5'),
+                util = require('util'),
+
                 ast = parse5.parse(body),
-                ast.walk(ast => 
+
+                ast.walk(ast => (
                     ast.tagName == 'script' || ast.tagName == 'style' && (ast.childNodes[0].value = this[ast.tagName](ast.childNodes[0].value)),
+
                     ast.attrs.forEach(attr => rewrite.attr([attr.name, attr.value]))
-                ),
+                )),
+
+                prefix = 'INSERT',
+                ast
+                    .createElement('script')
+                    .insertText (
+                        require('fs')
+                            .promises
+                            .readFile('rewriter.js')
+                            // TODO: Find regex alernative maybe use util.inspect to transfer an object
+                            .replaceAll('module.exports', 'Rewriter')
+                            .replaceAll(prefix + 'PREFIX', this.prefix)
+                            .replaceAll(prefix + 'BASE_URL', util.inspect(this.baseUrl))
+                            .replaceAll(prefix + 'CLIENT_URL', util.inspect(this.clientUrl))
+                            .replaceAll(prefix + 'CORS', util.inspect(this.cors))
+                            .replaceAll(prefix + 'TAO', util.inspect(this.tao))
+                            .replaceAll(prefix + 'ORIGINAL_COOKIE', escape(this.originalCookie))
+                            .replaceAll(prefix + 'DOM', escape(body))
+                    ),
+                
                 parse5.serialize(ast)
             )
             : (
                 ast = new DOMParser.parseFromString(body, 'text/html'),
-                ast.querySelectorAll`*`.forEach(elm =>
-                    // TODO: Minify
-                    elm.textContent = 
-                        elm.tagName == 'SCRIPT' 
-                            ? this.js(elm.textContent) 
-                        : elm.tagName == 'STYLE'
-                            ? this.css(elm.textContent)
-                        : elm.textContent,
+
+                ast.querySelectorAll`*`.forEach(elm => (
+                    elm.textContent = this[['js', 'css']['SCRIPT', 'STYLE'].indexOf(enc)],
                     elm.getAttributeNames().forEach(name => elm.setAttribute(...this.attr([name, elm.getAttribute(name)])))
-                ),
+                )),
+
                 ast.querySelector`*`.outerHTML
             );
 
@@ -107,15 +128,20 @@ module.exports = class {
         nodejs
             ? (
                 csstree = require('css-tree'),
+
                 ast = csstree.parse(body),
-                csstree.walk(ast, node => node.type == 'Url' && this.url(node.value)),
+
+                csstree.walk(ast, node => node.type == 'Url' && null),
+
                 csstree.generate(ast)
             )
             : (
                 dom = new DOMParser.parseFromString(`<style>${body}</style>`, 'text/html'),
+
                 Object
                     .entries(dom.styleSheets)
-                    .map(([i, ast]) => ast.cssRules.map(rule => rule.type == 'Url' && this.url(rule.cssText))),
+                    .map(([i, ast]) => ast.cssRules.map(rule => rule.type == 'Url' && null)),
+
                 dom.getElementsByTagName`style`.innerHTML
             );
 
@@ -155,6 +181,7 @@ module.exports = class {
             return Reflect.apply(target, thisArg, args);
         }
     },
+
     element
         .prototype
             .innerHTML = new Proxy(element.prototype.innerHTML, htmlHandler)
@@ -166,6 +193,7 @@ module.exports = class {
                 return Reflect.apply(target, thisArg, args);
             }
         }),
+
     window.proxifiedDocument = new Proxy(document, {
         get(target, prop) {
             target[prop] = null;
@@ -211,8 +239,6 @@ module.exports = class {
         })
         .WebSocket = new Proxy(window.WebSocket, {
             construct(target, args) {
-                const url = new URL(args[0]);
-
                 args[0] = null;
                 
                 return Reflect.construct(target, args);
@@ -233,6 +259,7 @@ module.exports = class {
                 return Reflect.apply(target, thisArg, args);
             }
         }),
+
     delete window.MediaStreamTrack, 
     delete window.RTCPeerConnection,
     delete window.RTCSessionDescription,
@@ -245,5 +272,6 @@ module.exports = class {
     delete window.webkitMediaStreamTrack,
     delete window.webkitRTCPeerConnection,
     delete window.webkitRTCSessionDescription,
+
     document.currentScript.remove()
 )

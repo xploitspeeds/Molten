@@ -1,7 +1,7 @@
 {
   "name": "@titaniumnetwork/molten",
   "version": "1.0.0",
-  "description": "The truest gateway to evading censorship",
+  "description": "The official proxy of Titanium Network, still being worked on.",
   "main": "app.js",
   "license": "BSD-3-Clause",
   "repository": {
@@ -9,10 +9,6 @@
     "url": "git+https://github.com/titaniumnetwork-dev/Molten.git"
   },
   "dependencies": {
-    "jsdom": "^16.5.2",
-    "terser": "^5.6.1",
-    "wrtc": "^0.4.7",
-    "ws": "^7.4.4"
   },
   "bugs": {
     "url": "https://github.com/titaniumnetwork-dev/Molten/issues"

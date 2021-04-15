@@ -1,104 +1,89 @@
-const https = require('https'), 
-    http = require('http'),
-    WebSocket = require('ws'),
-    wrtc = require('wrtc'),
-    zlib = require('zlib'), 
-    url = require('url'), 
-    Rewriter = require('./rewriter');
-
 module.exports = class {
     constructor(passthrough = {}) {
-        this.prefix = passthrough.prefix;
+        this.prefix = passthrough.prefix
+        this.tor = passthrough.tor;
 
         Object.assign(globalThis, this);
     };
 
-    http(req, resp) {
-        try {
-            this.baseUrl = 
-                `${this.reqProto = 
-                    req.connection.encrypted
-                        ? 'https'
-                    : !req.connection.encrypted 
-                        ? 'http'
-                    : null
-                }://${req.headers.host}`;
-            this.clientUrl = req.url.slice(this.prefix.length);
-        } catch (err) {
-            typeof err == TypeError && 
-                req
-                    .writeHead(500, { 'content-type': 'text/plain' })
-                    .end(err);
-        }
+    http = (req, resp) => (
+        reqProto = (
+            req.connection.encrypted
+                ? 'https'
+            : !req.connection.encrypted 
+                ? 'http'
+            : null
+        ),
 
-        const rewriter = new Rewriter({
-                prefix: this.prefix,
-                baseUrl: this.baseUrl, 
-                clientUrl: this.clientUrl
-            }), 
-            client = global[this.reqProto].request(
-                this.clientUrl, 
-                { 
-                    headers: 
-                        Object
-                            .entries(req.headers)
-                            .map(([header, directives]) => rewriter.header([header, directives]))
-                            .filter(map => map),
-                    method: req.method,
-                    followAllRedirects: false 
-                }, 
-                (clientResp, streamData = [], sendData = '') => 
-                    clientResp
-                        .on('data', data => streamData.push(data))
-                        .on('end', () => (
+        baseUrl = `${reqProto}://${req.headers.host}`,
+
+        clientUrl = req.url.slice(this.prefix.length),
+
+        rewriter = new (require('./rewriter'))({
+            prefix: this.prefix,
+            baseUrl: baseUrl, 
+            clientUrl: this.clientUrl
+        }),
+
+        // TODO: Switch to node-fetch so requests are asynchronous
+        client = require(reqProto).request (
+            clientUrl,
+            { 
+                headers: 
+                    Object
+                        .entries(req.headers)
+                        .map(([header, directives]) => rewriter.header([header, directives]))
+                        .filter(map => map),
+                method: req.method,
+                followAllRedirects: false 
+            }, 
+            (clientResp, streamData = [], sendData = '') => 
+                clientResp
+                    .on('data', data => streamData.push(data))
+                    .on (
+                        'end', 
+                        (
+                            // TODO: Move back into expression
+                            zlib = require('zlib'),
+
                             enc = clientResp.headers['content-encoding'],
-                            type = clientResp.headers['content-type'],
-                            (zlib[['gunzipSync','inflateSync','brotliDecompressSync'][['gzip', 'deflate', 'br'].indexOf(enc)]](Buffer.concat(streamData)).toString(),
-                            typeof type != 'undefined' && (
-                                directive = type.split`;`[0],
-                                // TODO: Minify
-                                sendData = 
-                                    directive == 'text/html'
-                                        ? rewriter.html(sendData)
-                                    : directive == 'text/css'
-                                        ? rewriter.css(sendData)
-                                    : ['text/javascript', 'application/x-javascript', 'application/javascript'].includes(directive)
-                                        ? rewriter.js(sendData)
-                                    : ['text/json', 'application/json'] && req.url == `${this.prefix + this.clientUrl}manifest.json`.includes(directive)
-                                        ? this.manifest(sendData)
-                                    : sendData
-                            ),
+                            type = clientResp.headers['content-type']
+                        ) => (
+                            zlib[['gunzipSync' ,'inflateSync' ,'brotliDecompressSync'][['gzip', 'deflate', 'br'].indexOf(enc)]](Buffer.concat(streamData).toString()),
+
+                            rewriter[['html', 'css', 'js', 'manifest'][['text/html', 'text/css', ['application/javascript', 'application/x-javascript', 'text/javascript'], ['application/json', 'text/json']].indexOf(type)]],
+
                             resp
                                 .writeHead (
                                     clientResp.statusCode, 
+
                                     Object
                                         .entries(clientResp.headers)
                                         .map(([header, directives]) => rewriter.header([header, directives]))
                                         .filter(map => map)
                                 )
                                 .end(sendData)
-                        ));
+                        )
+                    )
+                ),
                 
-        client.on('error', err => resp.end(err.message));
+        client.on('error', err => resp.end(err.message)),
         
         req
             .on('data', data => client.write(data))
-            .on('end', () => client.end());
-    };
+            .on('end', () => client.end())
+    );
 
-    ws(server) {
-        new WebSocket.Server({ server: server }).on('connection', (client, req, msgParts = []) => {
-            try {
-                this.clientUrl = req.url.slice(this.prefix.length);
-            } catch (err) {
-                return client.end();
-            }
+    ws = server => (
+        WebSocket = require('ws'), 
+        new WebSocket.Server({ server: server })).on('connection', (client, req) => (
+            clientUrl = req.url.slice(this.prefix.length),
 
-            const sendReq = new WebSocket(this.clientUrl, { headers: req.headers })
+            sendReq = new WebSocket(clientUrl, { headers: req.headers })
                 .on('message', msg => client.send(msg))
                 .on('open', () => sendReq.send(msgParts))
                 .on('error', () => client.end())
-                .on('close', () => client.close());
+                .on('close', () => client.close()),
 
             client
                 .on('message', msg => 
@@ -107,7 +92,7 @@ module.exports = class {
                         : msgParts.push(msg)
                 )
                 .on('error', () => sendReq.end())
-                .on('close', () => sendReq.close());
-        });
-    };
+                .on('close', () => sendReq.close())
+        )
+    );
 }
