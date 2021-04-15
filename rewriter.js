@@ -62,7 +62,7 @@ module.exports = class {
         )
     );
 
-    url = url => null;
+    url = null;
 
     attr = ([attr, src]) => 
         ['action', 'data', 'href', 'poster', 'src', 'xlink:href'].includes(attr) 
@@ -82,8 +82,9 @@ module.exports = class {
     html = body => 
         nodejs 
             ? (
-                parse5 = require('parse5'),
+                fs = require('fs').promises,
                 util = require('util'),
+                parse5 = require('parse5'),
 
                 ast = parse5.parse(body),
 
@@ -97,8 +98,7 @@ module.exports = class {
                 ast
                     .createElement('script')
                     .insertText (
-                        require('fs')
-                            .promises
+                        fs
                             .readFile('rewriter.js')
                             // TODO: Find regex alernative maybe use util.inspect to transfer an object
                             .replaceAll('module.exports', 'Rewriter')
