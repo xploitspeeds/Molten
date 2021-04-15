@@ -1,5 +1,5 @@
 # Molten
-The official proxy of Titanium Network, still being worked on.
+The official *wip* proxy of Titanium Network. This is the most **fast**, **efficient**, and **secure** proxy.
 
 # Why you shouldn't use it
 This proxy isn't done or stable yet. Changes to the structure of the project happen daily and this could cause problems with users.
@@ -11,6 +11,6 @@ This proxy isn't done or stable yet. Changes to the structure of the project hap
 
 # Future optimizations
 * Asyncronization
+* Workers
 * Cache
-* Faster alernative for sending data to the client
 * Ad/Spyware blockers

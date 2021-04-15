@@ -1,15 +1,12 @@
 module.exports = class {
-    constructor(passthrough = {}) {
-        this.prefix = passthrough.prefix,
-        this.tor = passthrough.tor;
-
-        Object.assign(globalThis, this);
+    constructor(config = {}) {
+        Object.assign(globalThis, config);
     };
 
     http = (req, resp) => (
-        Rewriter = require('./rewriter'),
-
-        reqProto = (
+        url = req.url.slice(this.prefix.length),
+        
+        proto = (
             req.connection.encrypted
                 ? 'https'
             : !req.connection.encrypted 
@@ -17,82 +14,81 @@ module.exports = class {
             : null
         ),
 
-        baseUrl = `${reqProto}://${req.headers.host}`,
-
-        clientUrl = req.url.slice(this.prefix.length),
-
-        rewriter = new Rewriter({
-            prefix: this.prefix,
-            baseUrl: baseUrl, 
-            clientUrl: this.clientUrl
+        rewriter = new require('./rewriter')({
+            prefix: config.prefix,
+            url: url
         }),
 
-        // TODO: Implement tor request support
-        client = require(reqProto).request (
-            clientUrl,
-            { 
-                headers: 
-                    Object
-                        .entries(req.headers)
-                        .map(([header, directives]) => rewriter.header([header, directives]))
-                        .filter(map => map),
-                method: req.method,
-                followAllRedirects: false 
-            }, 
-            (clientResp, streamData = [], sendData = '') => 
-                clientResp
-                    .on('data', data => streamData.push(data))
-                    .on ('end', () => (
-                        zlib = require('zlib'),
+        cli = 
+            require (
+                typeof config.socks5 == undefined 
+                    ? proto
+                : `socks5-${proto}-client`
+            ).request (
+                url,
+                { 
+                    headers: 
+                        Object
+                            .entries(req.headers)
+                            .map(([header, directives]) => rewriter.header([header, directives]))
+                            .filter(map => map),
+                    method: req.method,
+                    followAllRedirects: false,
+                    socksHost: config.socks5.host,
+                    socksPort: config.socks5.port,
+                    socksUsername: config.socks5.username,
+                    socksPassword: config.socks5.password
+                }, 
+                (cliResp, streamData = [], sendData = '') => 
+                    cliResp
+                        .on('data', data => streamData.push(data))
+                        .on('end', () => (
+                            sendData = rewriter[['html', 'css', 'js', 'manifest'][['text/html', 'text/css', ['application/javascript', 'application/x-javascript', 'text/javascript'], ['application/json', 'text/json']].indexOf(cliResp.headers['content-type'])]](require('zlib')[['gunzipSync' ,'inflateSync' ,'brotliDecompressSync'][['gzip', 'deflate', 'br'].indexOf(cliResp.headers['content-encoding'])]](Buffer.concat(streamData).toString())),
 
-                        enc = clientResp.headers['content-encoding'],
-                        type = clientResp.headers['content-type'],
-
-                        zlib[['gunzipSync' ,'inflateSync' ,'brotliDecompressSync'][['gzip', 'deflate', 'br'].indexOf(enc)]](Buffer.concat(streamData).toString()),
-
-                        rewriter[['html', 'css', 'js', 'manifest'][['text/html', 'text/css', ['application/javascript', 'application/x-javascript', 'text/javascript'], ['application/json', 'text/json']].indexOf(type)]],
-
-                        resp
-                            .writeHead (
-                                clientResp.statusCode, 
-
-                                Object
-                                    .entries(clientResp.headers)
-                                    .map(([header, directives]) => rewriter.header([header, directives]))
-                                    .filter(map => map)
+                            resp
+                                .writeHead (
+                                    cliResp.statusCode,
+                                    Object
+                                        .entries(cliResp.headers)
+                                        .map(([header, directives]) => rewriter.header([header, directives]))
+                                        .filter(map => map)
+                                )
+                                .end(sendData)
                             )
-                            .end(sendData)
                         )
-                    )
-                ),
-                
-        client.on('error', err => resp.end(err.message)),
-                                
-        req
-            .on('data', data => client.write(data))
-            .on('end', () => client.end())
-    );
+                    ),
+                    
+            client.on('error', err => resp.end(err.message)),
+                                    
+            req
+                .on('data', data => cli.write(data))
+                .on('end', () => cli.end())
+        );
 
     ws = server => (
         WebSocket = require('ws'), 
 
-        new WebSocket.Server({ server: server })).on('connection', (client, req) => (
-            clientUrl = req.url.slice(this.prefix.length),
-
-            sendReq = new WebSocket(clientUrl, { headers: req.headers })
-                .on('message', msg => client.send(msg))
+        new WebSocket.Server({ server: server })).on('connection', (cli, req) => (
+            cliReq = new WebSocket (
+                req.url.slice(this.prefix.length),
+                {
+                    headers: req.headers,
+                    agent: require(`socks5-${null}-client/lib/Agent`)
+                }
+            )
+                .on('message', msg => cli.send(msg))
                 .on('open', () => sendReq.send(msgParts))
-                .on('error', () => client.end())
-                .on('close', () => client.close()),
+                .on('error', () => cli.end())
+                .on('close', () => cli.close()),
 
-            client
+            cli
                 .on('message', msg => 
-                    sendReq.readyState == WebSocket.open 
-                        ? sendReq.send(msg)
+                    cliReq.readyState == WebSocket.open 
+                        ? cliReq.send(msg)
                     : msgParts.push(msg)
                 )
-                .on('error', () => sendReq.end())
-                .on('close', () => sendReq.close())
+                .on('error', () => cliReq.end())
+                .on('close', () => cliReq.close())
         )
     );
 }

@@ -1,60 +1,55 @@
 const nodejs = typeof exports !== 'undefined' && this.exports !== exports;
 
-// TODO: Make rewriter class asynchronous 
+// TODO: Add reference to standards
 module.exports = class {
-    constructor(passthrough = {}) {
-        // Not done
-        this['baseUrl', 'clientUrl', 'prefix'];
-    };
-
-    cookie = {
-        get: directives => null,
-
-        set: directives => 
-            directives
-                .join``
-                .split`; `
-                .map(directive =>
-                    pair = directive.split`=`,
-                    pair.length == 2
-                        ? pair[1] = 
-                            pair[0] == 'domain' 
-                                ? this.baseUrl.hostname 
-                            : pair[0] == 'path'
-                                ? this.prefix + pair[1]
-                            : pair[1]
-                        : pair.join`=` + pair[1].split``.join`&equiv;`
-                )
-                .join``
+    constructor(config = {}) {
+        Object.assign(globalThis, config);
     };
 
     header = ([header, directives]) => (
-        this.csp = 
-            header == 'content-security-policy' 
-                ? null
-                : null,
-        this.tao = 
-            header == 'timing-allow-origin' 
-                ? null 
-            : null,
-            
-        ['content-encoding', 'content-length', 'content-security-policy', 'timing-allow-origin', 'transfer-encoding', 'referrer-policy', 'x-frame-options'].includes(header) 
+        ['content-encoding', 'content-length', 'transfer-encoding'].includes(header) 
             ? null
+        : header == 'content-security-policy'
+            // Content Security Policy Level 3 - https://www.w3.org/TR/CSP3/
+            ? (
+                this.csp = null,
+                null
+            )
         : header == 'host' 
             ? [header, null] 
         : ['cookie', 'cookie2'].includes(header)
-            ? [header, this.cookie.get(directives)]
+            ? [header, null]
         : header == 'location' 
-            ? [header, this.prefix + directives]
+            ? [header, null)
         : header == 'referrer' 
-            ? [header, directives.slice(this.prefix.length)] 
+            ? [header, null]
+        : header == 'referrer-policy'
+            // Referrer Policy - https://w3c.github.io/webappsec-referrer-policy/
+            ? (
+                this.rp = null,
+                null
+            )
         : ['set-cookie', 'set-cookie2'].includes(header)
-            ? [header, this.cookie.set(directives)] 
+            ? [header, null] 
+        : header == 'timing-allow-origin'
+            // Resource Timing Level 2 - https://w3c.github.io/resource-timing
+            ? (
+                this.tao = null,
+                null
+            )
+        : header == 'x-frame-options'
+            // HTTP Header Field X-Frame-Options - https://tools.ietf.org/html/rfc7034
+            ? (
+                this.xfo = null,
+                null
+            )
         : [header, directives]
     );
 
+    // Web Application Manifest - https://w3c.github.io/manifest/
     manifest = body => (
         ast = JSON.parse(body),
+
         JSON.stringify(ast, (key, value) => 
             ['key', 'src', 'start_url'].includes(key)
                 ? null 
@@ -62,10 +57,19 @@ module.exports = class {
         )
     );
 
-    url = null;
+    attr = ([attr, src]) => (
+        /*
+            Not a complete reference
 
-    attr = ([attr, src]) => 
-        ['action', 'data', 'href', 'poster', 'src', 'xlink:href'].includes(attr) 
+            Uniform Resource Identifier (URI): Generic Syntax - https://tools.ietf.org/html/rfc3986
+            
+            The "data" URL scheme - https://tools.ietf.org/html/rfc2397
+            The 'mailto' URI Scheme - https://tools.ietf.org/html/rfc6068
+            The tel URI for Telephone Numbers - https://tools.ietf.org/html/rfc3966
+        */
+        url = null,
+
+        ['action', 'href', 'poster', 'src', 'xlink:href'].includes(attr) 
             ? [attr, null]
         : ['integrity', 'nonce'].includes(attr) 
             ? null
@@ -77,8 +81,10 @@ module.exports = class {
             ? [attr, this.html(src)]
         : attr == 'srcset' 
             ? [attr, src.split` `.map((src, i) => !(i % 2) ? null : src).join` `] 
-        : [attr, value];
+        : [attr, value]
+    );
 
+    // https://github.com/inikulin/parse5/blob/master/packages/parse5/docs/index.md
     html = body => 
         nodejs 
             ? (
@@ -94,26 +100,31 @@ module.exports = class {
                     ast.attrs.forEach(attr => rewrite.attr([attr.name, attr.value]))
                 )),
 
-                prefix = 'INSERT',
                 ast
                     .createElement('script')
                     .insertText (
-                        fs
-                            .readFile('rewriter.js')
-                            // TODO: Find regex alernative maybe use util.inspect to transfer an object
-                            .replaceAll('module.exports', 'Rewriter')
-                            .replaceAll(prefix + 'PREFIX', this.prefix)
-                            .replaceAll(prefix + 'BASE_URL', util.inspect(this.baseUrl))
-                            .replaceAll(prefix + 'CLIENT_URL', util.inspect(this.clientUrl))
-                            .replaceAll(prefix + 'CORS', util.inspect(this.cors))
-                            .replaceAll(prefix + 'TAO', util.inspect(this.tao))
-                            .replaceAll(prefix + 'ORIGINAL_COOKIE', escape(this.originalCookie))
-                            .replaceAll(prefix + 'DOM', escape(body))
+                        fs.readFile('rewriter.js') + 
+                        `
+                        Object.assign (
+                            globalthis,
+                            {
+                                prefix: ${prefix},
+                                url: ${url},
+                                cors: ${util.inspect(this.cors)},
+                                tao: ${util.inspect(this.tao)} ,
+                                original: {
+                                    cookie: ${this.cookie},
+                                    doc: ${body}),
+                                }
+                            }
+                        )
+                        `
                     ),
                 
                 parse5.serialize(ast)
             )
             : (
+                // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-parsing-and-serialization
                 ast = new DOMParser.parseFromString(body, 'text/html'),
 
                 ast.querySelectorAll`*`.forEach(elm => (
@@ -124,13 +135,16 @@ module.exports = class {
                 ast.querySelector`*`.outerHTML
             );
 
-    css = body => 
+    css = body => (
+        url = null,
+                    
         nodejs
             ? (
                 csstree = require('css-tree'),
 
                 ast = csstree.parse(body),
 
+                // There is a problem due to the fact you can add a variable as an argument
                 csstree.walk(ast, node => node.type == 'Url' && null),
 
                 csstree.generate(ast)
@@ -143,29 +157,16 @@ module.exports = class {
                     .map(([i, ast]) => ast.cssRules.map(rule => rule.type == 'Url' && null)),
 
                 dom.getElementsByTagName`style`.innerHTML
-            );
+            )
+    );
 
-    js = body => `{document=proxifiedDocument;${body}`;
+    js = body => `{ document = proxifiedDocument; ${body} }`;
 };
 
 !nodejs && (
-    passthrough = {
-        prefix: 'INSERT_PREFIX', 
-        baseUrl: INSERT_BASE_URL, 
-        clientUrl: INSERT_CLIENT_URL, 
-        security: {
-            cors: INSERT_CORS,
-            tao: INSERT_TAO
-        }, 
-        original: {
-            cookie: unescape`INSERT_COOKIE`,
-            dom: unescape`INSERT_DOM`
-        }
-    },
-    rewriter = new Rewriter({
-        prefix: passthrough.prefix, 
-        baseUrl: passthrough.baseUrl, 
-        clientUrl: passthrough.clientUrl
+    rewriter = new Rewriter ({
+        prefix: prefix, 
+        url: url
     }),
     htmlHandler = {
         apply(target, thisArg, args) {
